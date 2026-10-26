@@ -12,6 +12,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from playwright.sync_api import sync_playwright
 
@@ -159,6 +160,7 @@ def main() -> int:
 
     lowest = None
     rows = []
+    parse_status = "unknown"
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -196,6 +198,7 @@ def main() -> int:
         "fetched_at": now,
         "url": url,
         "cards_parsed": len(rows),
+        "status": parse_status,
     }
     save_json(Path(args.latest_file), latest)
 
