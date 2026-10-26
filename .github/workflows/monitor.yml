@@ -7,37 +7,33 @@ on:
   workflow_dispatch:
     inputs:
       from_code:
-        description: '出发地三字码 (如 LZO)'
+        description: '出发地三字码'
         required: true
-        default: 'LZO'
+        default: 'SHA'
       from_name:
-        description: '出发地名称 (如 泸州)'
+        description: '出发地名称'
         required: true
-        default: '泸州'
+        default: '上海'
       to_code:
-        description: '目的地三字码 (如 BJS)'
+        description: '目的地三字码'
         required: true
-        default: 'BJS'
+        default: 'IST'
       to_name:
-        description: '目的地名称 (如 北京)'
+        description: '目的地名称'
         required: true
-        default: '北京'
-      depart_dates:
-        description: '去程日期, 逗号分隔 (如 2026-09-30,2026-10-01)'
+        default: '伊斯坦布尔'
+      depart_date:
+        description: '去程日期 (YYYY-MM-DD)'
         required: true
-        default: '2026-09-30,2026-10-01,2026-10-02'
-      return_dates:
-        description: '回程日期, 逗号分隔 (可选)'
-        required: false
-        default: '2026-10-06'
-      platforms:
-        description: '平台: fliggy,tuniu,qunar,tongcheng,ctrip'
-        required: false
-        default: 'fliggy,tuniu,qunar,tongcheng'
+        default: '2027-09-30'
+      return_date:
+        description: '返程日期 (YYYY-MM-DD)'
+        required: true
+        default: '2027-10-10'
       threshold:
-        description: '低价提醒阈值（元）'
-        required: false
-        default: '0'
+        description: '往返总价提醒阈值（元）'
+        required: true
+        default: '8000'
 
 permissions:
   contents: write
@@ -62,41 +58,24 @@ jobs:
           pip install -r requirements.txt
           python -m playwright install chromium --with-deps
 
-      - name: Build config from workflow_dispatch or defaults
+      - name: Run Ctrip round-trip total fare monitor
         run: |
-          python scripts/build_config.py \
-            --from-code "${{ github.event.inputs.from_code || 'LZO' }}" \
-            --from-name "${{ github.event.inputs.from_name || '泸州' }}" \
-            --to-code "${{ github.event.inputs.to_code || 'BJS' }}" \
-            --to-name "${{ github.event.inputs.to_name || '北京' }}" \
-            --dates "${{ github.event.inputs.depart_dates || '2026-09-30,2026-10-01,2026-10-02' }}" \
-            --return-dates "${{ github.event.inputs.return_dates || '2026-10-06' }}" \
-            --platforms "${{ github.event.inputs.platforms || 'fliggy,tuniu,qunar,tongcheng' }}" \
-            --threshold "${{ github.event.inputs.threshold || '0' }}" \
-            --serverchan-key "${{ secrets.SERVERCHAN_KEY }}" \
-            --output config.yaml
-
-      - name: Run price monitor (one round)
-        run: python main.py --once
+          python scripts/ctrip_roundtrip.py \
+            --from-code "${{ github.event.inputs.from_code || 'SHA' }}" \
+            --from-name "${{ github.event.inputs.from_name || '上海' }}" \
+            --to-code "${{ github.event.inputs.to_code || 'IST' }}" \
+            --to-name "${{ github.event.inputs.to_name || '伊斯坦布尔' }}" \
+            --depart-date "${{ github.event.inputs.depart_date || '2027-09-30' }}" \
+            --return-date "${{ github.event.inputs.return_date || '2027-10-10' }}" \
+            --threshold "${{ github.event.inputs.threshold || '8000' }}" \
+            --serverchan-key "${{ secrets.SERVERCHAN_KEY }}"
         timeout-minutes: 15
 
-      - name: Export latest results to JSON
-        run: |
-          mkdir -p docs/data
-          python scripts/export_results.py \
-            --db data/prices.db \
-            --out docs/data/latest.json
-
-      - name: Render HTML report
-        run: |
-          python scripts/render_report.py \
-            --results-file docs/data/latest.json \
-            --out-dir docs/data
-
-      - name: Commit data & report
+      - name: Commit round-trip monitor data
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/data/
-          git diff --staged --quiet || git commit -m "chore: update price data $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git diff --staged --quiet || git commit -m "chore: update round-trip fare data $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git pull --rebase
           git push
