@@ -1,0 +1,17 @@
+[
+  {
+    "from": "SHA",
+    "from_name": "上海",
+    "to": "IST",
+    "to_name": "伊斯坦布尔",
+    "depart_date": "2027-09-30",
+    "return_date": "2027-10-10",
+    "roundtrip_total": null,
+    "threshold": 8000.0,
+    "source": "ctrip",
+    "fetched_at": "2026-10-26 22:09:19",
+    "url": "https://flights.ctrip.com/online/list/round-sha-ist?depdate=2027-09-30_2027-10-10&cabin=y_s_c_f&adult=1&child=0&infant=0",
+    "cards_parsed": 0,
+    "status": "no_cards"
+  }
+]
