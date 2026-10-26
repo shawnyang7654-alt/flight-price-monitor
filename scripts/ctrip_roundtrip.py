@@ -38,8 +38,40 @@ def parse_prices(text: str) -> list[int]:
     return values
 
 
-def extract_lowest_roundtrip(page) -> tuple[int | None, list[dict]]:
-    # Ctrip progressively renders more outbound cards while scrolling.
+def extract_lowest_roundtrip(page) -> tuple[int | None, list[dict], str]:
+    """Return the cheapest round-trip total from rendered Ctrip flight cards.
+
+    Ctrip's round-trip outbound list displays one total round-trip fare on each
+    .flight-item card. We deliberately do not scan the whole page for numbers:
+    unrelated coupons/add-ons must never trigger a low-price alert.
+    """
+    try:
+        state = page.evaluate("""() => {
+          const t = document.body?.innerText || '';
+          if (location.pathname.includes('captcha') || /验证码|安全验证|verify the human/i.test(t)) {
+            return 'captcha';
+          }
+          return document.querySelectorAll('.flight-item').length ? 'content' : 'loading';
+        }""")
+        for _ in range(18):
+            if state != "loading":
+                break
+            page.wait_for_timeout(1000)
+            state = page.evaluate("""() => {
+              const t = document.body?.innerText || '';
+              if (location.pathname.includes('captcha') || /验证码|安全验证|verify the human/i.test(t)) {
+                return 'captcha';
+              }
+              return document.querySelectorAll('.flight-item').length ? 'content' : 'loading';
+            }""")
+    except Exception:
+        state = "loading"
+
+    if state == "captcha":
+        return None, [], "captcha"
+    if state != "content":
+        return None, [], "no_cards"
+
     last_count = -1
     stable_rounds = 0
     for _ in range(10):
@@ -65,22 +97,13 @@ def extract_lowest_roundtrip(page) -> tuple[int | None, list[dict]]:
         prices = parse_prices(text)
         if not prices:
             continue
-        price = min(prices)
-        rows.append({"price": price, "text": text[:1000]})
+        # The first currency amount on the outbound card is its displayed
+        # round-trip total. Do not choose the smallest arbitrary number.
+        rows.append({"price": prices[0], "text": text[:1000]})
 
-    if rows:
-        return min(r["price"] for r in rows), rows
-
-    # Fallback if Ctrip changes the card class.
-    try:
-        body = page.locator("body").inner_text(timeout=5000)
-    except Exception:
-        body = ""
-    if "往返" in body:
-        prices = parse_prices(body)
-        if prices:
-            return min(prices), [{"price": min(prices), "text": "body-fallback"}]
-    return None, []
+    if not rows:
+        return None, [], "parse_failed"
+    return min(r["price"] for r in rows), rows, "ok"
 
 
 def send_serverchan(send_key: str, title: str, desp: str) -> bool:
@@ -155,11 +178,11 @@ def main() -> int:
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(10000)
-            lowest, rows = extract_lowest_roundtrip(page)
+            lowest, rows, parse_status = extract_lowest_roundtrip(page)
         finally:
             browser.close()
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
     latest = {
         "from": args.from_code.upper(),
         "from_name": args.from_name,
@@ -186,7 +209,7 @@ def main() -> int:
     last_alert = state.get("last_alert_price")
 
     if lowest is None:
-        print("[roundtrip] 未解析到往返总价；可能尚未开售、被风控或页面结构变化。")
+        print(f"[roundtrip] 未解析到往返总价（status={parse_status}）；可能尚未开售、被风控或页面结构变化。")
         state.update({"last_checked_at": now, "last_price": None})
         save_json(state_path, state)
         return 0
