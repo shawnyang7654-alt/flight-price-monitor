@@ -83,6 +83,15 @@ jobs:
             --threshold "$THRESHOLD" \
             --serverchan-key "$SERVERCHAN_KEY"
 
+      - name: Upload Ctrip debug snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctrip-roundtrip-debug
+          path: debug/
+          if-no-files-found: ignore
+          retention-days: 3
+
       - name: Commit round-trip monitoring data
         run: |
           git config user.name "github-actions[bot]"
