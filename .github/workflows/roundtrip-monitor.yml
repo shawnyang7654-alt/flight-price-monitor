@@ -1,0 +1,94 @@
+name: Ctrip Round-trip Price Monitor
+
+on:
+  schedule:
+    # Every 6 hours. GitHub cron uses UTC.
+    - cron: '20 1,7,13,19 * * *'
+  workflow_dispatch:
+    inputs:
+      from_code:
+        description: '出发城市代码'
+        required: true
+        default: 'SHA'
+      from_name:
+        description: '出发城市名称'
+        required: true
+        default: '上海'
+      to_code:
+        description: '到达城市代码'
+        required: true
+        default: 'IST'
+      to_name:
+        description: '到达城市名称'
+        required: true
+        default: '伊斯坦布尔'
+      depart_date:
+        description: '去程日期 YYYY-MM-DD'
+        required: true
+        default: '2027-09-30'
+      return_date:
+        description: '返程日期 YYYY-MM-DD'
+        required: true
+        default: '2027-10-10'
+      threshold:
+        description: '往返总价提醒阈值（人民币）'
+        required: true
+        default: '8000'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ctrip-roundtrip-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install chromium --with-deps
+
+      - name: Monitor Ctrip round-trip total fare
+        env:
+          FROM_CODE: ${{ github.event.inputs.from_code || 'SHA' }}
+          FROM_NAME: ${{ github.event.inputs.from_name || '上海' }}
+          TO_CODE: ${{ github.event.inputs.to_code || 'IST' }}
+          TO_NAME: ${{ github.event.inputs.to_name || '伊斯坦布尔' }}
+          DEPART_DATE: ${{ github.event.inputs.depart_date || '2027-09-30' }}
+          RETURN_DATE: ${{ github.event.inputs.return_date || '2027-10-10' }}
+          THRESHOLD: ${{ github.event.inputs.threshold || '8000' }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+        run: |
+          python scripts/ctrip_roundtrip.py \
+            --from-code "$FROM_CODE" \
+            --from-name "$FROM_NAME" \
+            --to-code "$TO_CODE" \
+            --to-name "$TO_NAME" \
+            --depart-date "$DEPART_DATE" \
+            --return-date "$RETURN_DATE" \
+            --threshold "$THRESHOLD" \
+            --serverchan-key "$SERVERCHAN_KEY"
+
+      - name: Commit round-trip monitoring data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/roundtrip_*.json
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update Ctrip round-trip fare data"
+            git push
+          fi
