@@ -181,6 +181,24 @@ def main() -> int:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(10000)
             lowest, rows, parse_status = extract_lowest_roundtrip(page)
+            if parse_status != "ok":
+                debug_dir = Path("debug")
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    page.screenshot(path=str(debug_dir / "ctrip_roundtrip.png"), full_page=True)
+                except Exception as exc:
+                    print(f"[warn] 保存截图失败: {exc}")
+                try:
+                    (debug_dir / "ctrip_roundtrip.html").write_text(page.content(), encoding="utf-8")
+                except Exception as exc:
+                    print(f"[warn] 保存HTML失败: {exc}")
+                try:
+                    (debug_dir / "ctrip_roundtrip.txt").write_text(
+                        page.locator("body").inner_text(timeout=5000),
+                        encoding="utf-8",
+                    )
+                except Exception as exc:
+                    print(f"[warn] 保存页面文本失败: {exc}")
         finally:
             browser.close()
 
